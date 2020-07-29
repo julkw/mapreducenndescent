@@ -4,7 +4,6 @@ import java.io.{BufferedInputStream, File, FileInputStream}
 import java.nio
 import java.nio.{ByteBuffer, ByteOrder}
 
-import com.beust.jcommander.{JCommander, Parameter, ParameterException}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
@@ -17,33 +16,15 @@ case class Neighbor(node: Node, distance: Double, var isNew: Boolean)
 
 object MapReduceNNDescent extends App {
   val mapReduceApp = new MapReduceNNDescent()
-  val commander = JCommander.newBuilder().addObject(mapReduceApp).build()
-
-  try {
-    commander.parse(args: _*)
-  } catch {
-    case e: ParameterException =>
-      println(s"Could not parse args!\n${e.getMessage}")
-      System.exit(1)
-    case e: Throwable =>
-      println(s"Unknown exception!\n${e.getMessage}")
-      System.exit(1)
-  }
 
   mapReduceApp.run()
 }
 
 class MapReduceNNDescent {
 
-  @Parameter(names = Array("--path", "-p"), required = false)
-  var path: String = "./TPCH"
-
-  @Parameter(names = Array("--cores", "-c"), required = false)
-  var numCores: Int = 4
-
-  // as taken from the tutorial
-  val numPartitions: Int = 1
-
+  val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
+  val numCores: Int = 4
+  val numPartitions: Int = 5
 
   def run(): Unit = {
 
@@ -65,15 +46,13 @@ class MapReduceNNDescent {
     // Set the default number of shuffle partitions to 5 (default is 200, which is too high for local deployment)
     spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
 
-    // TODO input through parameters
-    val filename = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
-    val graphSize = 1000
+    println(path)
     val initialNeighbors = 10
     val k = 30
     val iterations = 10
 
     // read data and generate random graph
-    val data = readDataFloat(filename).slice(0, graphSize)
+    val data = readDataFloat(path)
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
       val neighbors = randomNodes(initialNeighbors, data.length).toSeq.map { neighborIndex =>
@@ -86,14 +65,14 @@ class MapReduceNNDescent {
     println("average Distance before: " + avgDistBefore)
     var rdd = spark.sparkContext.parallelize(graph, numPartitions)
     val nnd = new NNDescent(k)
-    // TODO print start time
-    (1 to iterations).foreach { iteration =>
-      println("Iteration: " + iteration)
+    val before = System.currentTimeMillis()
+    (1 to iterations).foreach { _ =>
       rdd = nnd.localJoin(rdd)
-      rdd.collect()
     }
-    // TODO print end time
     val resultingGraph = rdd.collect()
+    val after = System.currentTimeMillis()
+    val duration = (after - before)/1000
+    println(s"$iterations" + " iterations took " + s"$duration" + " seconds")
     val avgDistAfter = averageDistance(resultingGraph)
     println("average distance after: " + avgDistAfter)
   }
