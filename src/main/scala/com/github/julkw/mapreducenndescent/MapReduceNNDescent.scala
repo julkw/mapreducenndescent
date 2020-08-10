@@ -13,7 +13,7 @@ import scala.language.postfixOps
 
 case class Node(index: Int, location: Seq[Float])
 
-case class Neighbor(node: Node, distance: Double, var isNew: Boolean)
+case class Neighbor(node: Node, distance: Double, var isNew: Boolean, isReverse: Boolean)
 
 object MapReduceNNDescent {
   val mapReduceApp = new MapReduceNNDescent()
@@ -63,7 +63,7 @@ class MapReduceNNDescent {
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
       val neighbors = randomNodes(initialNeighbors, data.length).toSeq.map { neighborIndex =>
-        Neighbor(Node(neighborIndex, data(neighborIndex).toSeq), nnd.euclideanDist(data(nodeIndex), data(neighborIndex)), isNew = true)
+        Neighbor(Node(neighborIndex, data(neighborIndex).toSeq), nnd.euclideanDist(data(nodeIndex), data(neighborIndex)), isNew = true, isReverse = false)
       }
       (node, neighbors)
     }.toList
@@ -140,7 +140,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
 
   def localJoin(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
     graph.flatMap { case (node, neighbors) =>
-      val reverseNeighbors = neighbors.map(neighbor => (neighbor.node, Seq(Neighbor(node, neighbor.distance, neighbor.isNew))))
+      val reverseNeighbors = neighbors.map(neighbor => (neighbor.node, Seq(Neighbor(node, neighbor.distance, neighbor.isNew, isReverse = true))))
       val normalNeighbors = (node, neighbors)
       // collect normal and reverse neighbors for each node
       reverseNeighbors :+ normalNeighbors
@@ -150,14 +150,14 @@ class NNDescent(k: Int) extends java.io.Serializable {
       // join neighbors
       val potentialNeighbors = neighbors.combinations(2).filter(combination => combination(0).isNew && combination(1).isNew).flatMap { pair =>
         val dist = euclideanDist(pair(0).node.location, pair(1).node.location)
-        val edge1 = (pair(0).node, Seq(Neighbor(pair(1).node, dist, isNew = true)))
-        val edge2 = (pair(1).node, Seq(Neighbor(pair(0).node, dist, isNew = true)))
+        val edge1 = (pair(0).node, Seq(Neighbor(pair(1).node, dist, isNew = true, isReverse = false)))
+        val edge2 = (pair(1).node, Seq(Neighbor(pair(0).node, dist, isNew = true, isReverse = false)))
         Seq(edge1, edge2)
       }.toList
 
-      val alreadyNeighbors = (node, neighbors.sortBy(_.distance).slice(0, k))
-      alreadyNeighbors._2.foreach(_.isNew = false)
-      potentialNeighbors :+ alreadyNeighbors
+      val currentNeighbors = neighbors.filter(!_.isReverse).sortBy(_.distance)
+      currentNeighbors.foreach(_.isNew = false)
+      potentialNeighbors :+ (node, currentNeighbors)
     }
     .reduceByKey { (collectedNeighbors, potentialNeighbors) =>
         mergeSortedNeighbors(collectedNeighbors, potentialNeighbors, k)
@@ -172,14 +172,20 @@ class NNDescent(k: Int) extends java.io.Serializable {
     sqrt(sum)
   }
 
+  // TODO I assume the reason some iterations produce a slightly worse graph lies here
   def mergeSortedNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor], maxNeighbors: Int): Seq[Neighbor] = {
     var finalNeighbors = neighbors
     potentialNeighbors.foreach { potentialNeighbor =>
-      if (!neighbors.contains(potentialNeighbor) && neighbors.last.distance > potentialNeighbor.distance) {
+      // explicitly check using index to avoid problems where the same neighbor is both old and new
+      val alreadyANeighbor = neighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)
+      if (!alreadyANeighbor && neighbors.last.distance > potentialNeighbor.distance) {
         val position = neighbors.indexWhere(_.distance > potentialNeighbor.distance)
         finalNeighbors = (finalNeighbors.slice(0, position) :+ potentialNeighbor) ++ finalNeighbors.slice(position, maxNeighbors - 1)
       }
     }
+    val debug = finalNeighbors.map(_.node.index)
+    assert (debug.length <= k)
+    assert(debug.distinct.length == debug.length)
     finalNeighbors
   }
 }
