@@ -33,6 +33,9 @@ class MapReduceNNDescent {
   val k = 50
   val iterations = 10
 
+  // TODO during local test, the average distance went up during the last iteration
+  // TODO even though it compiles on the cluster, the first iteration never produces results
+
   def run(): Unit = {
 
     // Turn off logging
@@ -43,7 +46,8 @@ class MapReduceNNDescent {
     val sparkBuilder = SparkSession
       .builder()
       .appName("MapReduce NNDescent")
-      .config("spark.driver.bindAddress", "127.0.0.1")
+      .master("local[4]")
+      //.config("spark.driver.bindAddress", "127.0.0.1")
     val spark = sparkBuilder.getOrCreate()
 
     spark.sparkContext.setLogLevel("OFF")
