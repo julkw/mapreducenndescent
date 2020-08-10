@@ -15,10 +15,13 @@ case class Node(index: Int, location: Seq[Float])
 
 case class Neighbor(node: Node, distance: Double, var isNew: Boolean)
 
-object MapReduceNNDescent extends App {
+object MapReduceNNDescent {
   val mapReduceApp = new MapReduceNNDescent()
 
-  mapReduceApp.run()
+  def main(args: Array[String]): Unit = {
+    mapReduceApp.run()
+  }
+
 }
 
 class MapReduceNNDescent {
