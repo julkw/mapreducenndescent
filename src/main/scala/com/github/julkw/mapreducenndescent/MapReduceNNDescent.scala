@@ -9,6 +9,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 
 import scala.math.{pow, sqrt}
+import scala.language.postfixOps
 
 case class Node(index: Int, location: Seq[Float])
 
@@ -23,8 +24,11 @@ object MapReduceNNDescent extends App {
 class MapReduceNNDescent {
 
   val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
-  val numCores: Int = 4
-  val numPartitions: Int = 5
+  val numCores: Int = 20
+  // val numPartitions: Int = 240
+  val initialNeighbors = 10
+  val k = 50
+  val iterations = 10
 
   def run(): Unit = {
 
@@ -44,12 +48,7 @@ class MapReduceNNDescent {
     spark.sparkContext.setLogLevel("OFF")
 
     // Set the default number of shuffle partitions to 5 (default is 200, which is too high for local deployment)
-    spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
-
-    println(path)
-    val initialNeighbors = 10
-    val k = 30
-    val iterations = 10
+    // spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
 
     // read data and generate random graph
     val data = readDataFloat(path)
@@ -61,9 +60,8 @@ class MapReduceNNDescent {
       (node, neighbors)
     }.toList
 
-    val avgDistBefore = averageDistance(graph.toArray)
-    println("average Distance before: " + avgDistBefore)
-    var rdd = spark.sparkContext.parallelize(graph, numPartitions)
+    // let spark decide itself how many partitions to use
+    var rdd = spark.sparkContext.parallelize(graph)
     val nnd = new NNDescent(k)
     val before = System.currentTimeMillis()
     (1 to iterations).foreach { _ =>
