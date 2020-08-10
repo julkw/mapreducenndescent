@@ -33,8 +33,8 @@ class MapReduceNNDescent {
   val k = 50
   val iterations = 10
 
-  // TODO during local test, the average distance went up during the last iteration
-  // TODO even though it compiles on the cluster, the first iteration never produces results
+  // TODO sometimes the average distance increases after an iteration
+  // TODO count changes to neighbors and only do more iterations if there were any?
 
   def run(): Unit = {
 
@@ -71,22 +71,30 @@ class MapReduceNNDescent {
     val avgDistBefore = averageDistance(graph.toArray)
     println("average distance before NNDescent: " + avgDistBefore)
 
-    var rdd = spark.sparkContext.parallelize(graph)
+    val rdd = spark.sparkContext.parallelize(graph)
 
     val before = System.currentTimeMillis()
-    (1 to iterations).foreach { it =>
-      println("Start iteration " + s"$it")
-      rdd = nnd.localJoin(rdd)
-      val afterItGraph = rdd.collect()
-      val avgDistAfterIt = averageDistance(afterItGraph)
-      println("average distance after iteration: " + avgDistAfterIt)
-    }
-    val resultingGraph = rdd.collect()
+    val resultingGraph = recursiveIterations(rdd, nnd, 10).collect()
     val after = System.currentTimeMillis()
+
     val duration = (after - before)/1000
     println(s"$iterations" + " iterations took " + s"$duration" + " seconds")
     val avgDistAfter = averageDistance(resultingGraph)
     println("average distance after: " + avgDistAfter)
+  }
+
+  def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIeration: Int): RDD[(Node, Seq[Neighbor])] = {
+    if (maxIeration == 0) {
+      val afterItGraph = rdd.collect()
+      val avgDistAfterIt = averageDistance(afterItGraph)
+      println("average distance after all iterations: " + avgDistAfterIt)
+      rdd
+    } else {
+      val afterItGraph = rdd.collect()
+      val avgDistAfterIt = averageDistance(afterItGraph)
+      println("average distance before iteration: " + avgDistAfterIt)
+      recursiveIterations(nnd.localJoin(rdd), nnd, maxIeration - 1)
+    }
   }
 
   // Create initial graph
@@ -172,7 +180,6 @@ class NNDescent(k: Int) extends java.io.Serializable {
     sqrt(sum)
   }
 
-  // TODO I assume the reason some iterations produce a slightly worse graph lies here
   def mergeSortedNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor], maxNeighbors: Int): Seq[Neighbor] = {
     var finalNeighbors = neighbors
     potentialNeighbors.foreach { potentialNeighbor =>
@@ -183,9 +190,6 @@ class NNDescent(k: Int) extends java.io.Serializable {
         finalNeighbors = (finalNeighbors.slice(0, position) :+ potentialNeighbor) ++ finalNeighbors.slice(position, maxNeighbors - 1)
       }
     }
-    val debug = finalNeighbors.map(_.node.index)
-    assert (debug.length <= k)
-    assert(debug.distinct.length == debug.length)
     finalNeighbors
   }
 }
