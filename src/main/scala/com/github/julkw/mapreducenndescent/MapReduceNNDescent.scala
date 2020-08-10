@@ -46,7 +46,7 @@ class MapReduceNNDescent {
     val sparkBuilder = SparkSession
       .builder()
       .appName("MapReduce NNDescent")
-      .master("local[4]")
+      //.master("local[4]")
       //.config("spark.driver.bindAddress", "127.0.0.1")
     val spark = sparkBuilder.getOrCreate()
 
@@ -56,23 +56,26 @@ class MapReduceNNDescent {
     // spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
 
     // read data and generate random graph
-    val data = readDataFloat(path).slice(0, 1000)
+    val data = readDataFloat(path)//.slice(0, 1000)
+    val nnd = new NNDescent(k)
+
     println("Read " + s"${data.length}" + " lines of data from " + s"$path")
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
       val neighbors = randomNodes(initialNeighbors, data.length).toSeq.map { neighborIndex =>
-        Neighbor(Node(neighborIndex, data(neighborIndex).toSeq), Double.MaxValue, isNew = true)
+        Neighbor(Node(neighborIndex, data(neighborIndex).toSeq), nnd.euclideanDist(data(nodeIndex), data(neighborIndex)), isNew = true)
       }
       (node, neighbors)
     }.toList
     println("Finished building graph")
+    val avgDistBefore = averageDistance(graph.toArray)
+    println("average distance before NNDescent: " + avgDistBefore)
 
-    // let spark decide itself how many partitions to use
     var rdd = spark.sparkContext.parallelize(graph)
-    val nnd = new NNDescent(k)
+
     val before = System.currentTimeMillis()
     (1 to iterations).foreach { it =>
-      println("Start iteration" + s"$it")
+      println("Start iteration " + s"$it")
       rdd = nnd.localJoin(rdd)
       val afterItGraph = rdd.collect()
       val avgDistAfterIt = averageDistance(afterItGraph)
@@ -145,25 +148,15 @@ class NNDescent(k: Int) extends java.io.Serializable {
     .reduceByKey(_ ++ _ distinct)
     .flatMap { case (node, neighbors) =>
       // join neighbors
-      val (newNeighbors, oldNeighbors) = neighbors.partition(_.isNew)
-      val newOldCombinations = (for {
-        n1 <- newNeighbors
-        n2 <- oldNeighbors
-        dist = euclideanDist(n1.node.location, n2.node.location)
-        edge1 = (n1.node, Seq(Neighbor(n2.node, dist, isNew = true)))
-        edge2 = (n2.node, Seq(Neighbor(n1.node, dist, isNew = true)))
-      } yield Seq(edge1, edge2)).flatten
-      val newNewCombinations = (for {
-        n1 <- newNeighbors
-        n2 <- newNeighbors
-        dist = euclideanDist(n1.node.location, n2.node.location)
-        edge1 = (n1.node, Seq(Neighbor(n2.node, dist, isNew = true)))
-        edge2 = (n2.node, Seq(Neighbor(n1.node, dist, isNew = true)))
-      } yield Seq(edge1, edge2)).flatten
-      val potentialNeighbors = newOldCombinations ++ newNewCombinations
-      // the neighbors from the last iterations are not new anymore
-      neighbors.foreach(_.isNew = false)
-      val alreadyNeighbors = (node, neighbors)
+      val potentialNeighbors = neighbors.combinations(2).filter(combination => combination(0).isNew && combination(1).isNew).flatMap { pair =>
+        val dist = euclideanDist(pair(0).node.location, pair(1).node.location)
+        val edge1 = (pair(0).node, Seq(Neighbor(pair(1).node, dist, isNew = true)))
+        val edge2 = (pair(1).node, Seq(Neighbor(pair(0).node, dist, isNew = true)))
+        Seq(edge1, edge2)
+      }.toList
+
+      val alreadyNeighbors = (node, neighbors.sortBy(_.distance).slice(0, k))
+      alreadyNeighbors._2.foreach(_.isNew = false)
       potentialNeighbors :+ alreadyNeighbors
     }
     .reduceByKey { (collectedNeighbors, potentialNeighbors) =>
