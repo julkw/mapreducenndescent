@@ -84,15 +84,16 @@ class MapReduceNNDescent {
   }
 
   def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIeration: Int): RDD[(Node, Seq[Neighbor])] = {
+    println("iteration")
     if (maxIeration == 0) {
-      val afterItGraph = rdd.collect()
-      val avgDistAfterIt = averageDistance(afterItGraph)
-      println("average distance after all iterations: " + avgDistAfterIt)
+      //val afterItGraph = rdd.collect()
+      //val avgDistAfterIt = averageDistance(afterItGraph)
+      //println("average distance after all iterations: " + avgDistAfterIt)
       rdd
     } else {
-      val afterItGraph = rdd.collect()
-      val avgDistAfterIt = averageDistance(afterItGraph)
-      println("average distance before iteration: " + avgDistAfterIt)
+      //val afterItGraph = rdd.collect()
+     // val avgDistAfterIt = averageDistance(afterItGraph)
+      //println("average distance before iteration: " + avgDistAfterIt)
       recursiveIterations(nnd.localJoin(rdd), nnd, maxIeration - 1)
     }
   }
@@ -193,6 +194,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
     finalNeighbors
   }
 
+    // TODO the worsening of average distances after an iteration sadly still happens, also it became a lot slower with this for some reason
   def insertIntoSortedNeighbors(sortedNeighbors: Seq[Neighbor], newNeighbor: Neighbor): Seq[Neighbor] = {
     val position = sortedNeighbors.indexWhere(_.distance > newNeighbor.distance)
     if (position < 0) {
