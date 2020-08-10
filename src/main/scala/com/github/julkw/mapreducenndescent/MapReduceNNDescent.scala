@@ -29,8 +29,8 @@ class MapReduceNNDescent {
   val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
   // val numCores: Int = 20
   // val numPartitions: Int = 240
-  val initialNeighbors = 10
   val k = 50
+  val initialNeighbors = 10
   val iterations = 10
 
   // TODO sometimes the average distance increases after an iteration
@@ -168,7 +168,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
       potentialNeighbors :+ (node, currentNeighbors)
     }
     .reduceByKey { (collectedNeighbors, potentialNeighbors) =>
-        mergeSortedNeighbors(collectedNeighbors, potentialNeighbors, k)
+        mergeSortedNeighbors(collectedNeighbors, potentialNeighbors)
     }
   }
 
@@ -180,16 +180,25 @@ class NNDescent(k: Int) extends java.io.Serializable {
     sqrt(sum)
   }
 
-  def mergeSortedNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor], maxNeighbors: Int): Seq[Neighbor] = {
+  def mergeSortedNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
     var finalNeighbors = neighbors
-    potentialNeighbors.foreach { potentialNeighbor =>
-      // explicitly check using index to avoid problems where the same neighbor is both old and new
+    potentialNeighbors.distinct.foreach { potentialNeighbor =>
+      // explicitly check using index to avoid duplications where the same neighbor is both old and new
       val alreadyANeighbor = neighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)
-      if (!alreadyANeighbor && neighbors.last.distance > potentialNeighbor.distance) {
-        val position = neighbors.indexWhere(_.distance > potentialNeighbor.distance)
-        finalNeighbors = (finalNeighbors.slice(0, position) :+ potentialNeighbor) ++ finalNeighbors.slice(position, maxNeighbors - 1)
+      // always add neighbors if neighbors < k, since we don't know in which order they are reduced (problematic if one of the closest is one of the first)
+      if (!alreadyANeighbor && (finalNeighbors.length < k || neighbors.last.distance > potentialNeighbor.distance)) {
+        finalNeighbors = insertIntoSortedNeighbors(finalNeighbors, potentialNeighbor)
       }
     }
     finalNeighbors
+  }
+
+  def insertIntoSortedNeighbors(sortedNeighbors: Seq[Neighbor], newNeighbor: Neighbor): Seq[Neighbor] = {
+    val position = sortedNeighbors.indexWhere(_.distance > newNeighbor.distance)
+    if (position < 0) {
+      sortedNeighbors :+ newNeighbor
+    } else {
+      (sortedNeighbors.slice(0, position) :+ newNeighbor) ++ sortedNeighbors.slice(position, k - 1)
+    }
   }
 }
