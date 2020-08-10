@@ -24,7 +24,7 @@ object MapReduceNNDescent extends App {
 class MapReduceNNDescent {
 
   val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
-  val numCores: Int = 20
+  // val numCores: Int = 20
   // val numPartitions: Int = 240
   val initialNeighbors = 10
   val k = 50
@@ -40,8 +40,6 @@ class MapReduceNNDescent {
     val sparkBuilder = SparkSession
       .builder()
       .appName("MapReduce NNDescent")
-      // local, with 4 worker cores
-      .master(s"local[$numCores]")
       .config("spark.driver.bindAddress", "127.0.0.1")
     val spark = sparkBuilder.getOrCreate()
 
