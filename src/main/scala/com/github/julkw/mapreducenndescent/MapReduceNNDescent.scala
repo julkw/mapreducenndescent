@@ -1,6 +1,6 @@
 package com.github.julkw.mapreducenndescent
 
-import java.io.{BufferedInputStream, File, FileInputStream}
+import java.io.{BufferedInputStream, FileInputStream}
 import java.nio
 import java.nio.{ByteBuffer, ByteOrder}
 
@@ -53,6 +53,7 @@ class MapReduceNNDescent {
 
     // read data and generate random graph
     val data = readDataFloat(path)
+    println("Read data from " + s"$path")
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
       val neighbors = randomNodes(initialNeighbors, data.length).toSeq.map { neighborIndex =>
@@ -60,13 +61,16 @@ class MapReduceNNDescent {
       }
       (node, neighbors)
     }.toList
+    println("Finished building graph")
 
     // let spark decide itself how many partitions to use
     var rdd = spark.sparkContext.parallelize(graph)
     val nnd = new NNDescent(k)
     val before = System.currentTimeMillis()
-    (1 to iterations).foreach { _ =>
+    (1 to iterations).foreach { it =>
+      println("Start iteration" + s"$it")
       rdd = nnd.localJoin(rdd)
+      rdd.collect()
     }
     val resultingGraph = rdd.collect()
     val after = System.currentTimeMillis()
