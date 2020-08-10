@@ -52,8 +52,8 @@ class MapReduceNNDescent {
     // spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
 
     // read data and generate random graph
-    val data = readDataFloat(path)
-    println("Read data from " + s"$path")
+    val data = readDataFloat(path).slice(0, 1000)
+    println("Read " + s"${data.length}" + " lines of data from " + s"$path")
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
       val neighbors = randomNodes(initialNeighbors, data.length).toSeq.map { neighborIndex =>
@@ -70,7 +70,9 @@ class MapReduceNNDescent {
     (1 to iterations).foreach { it =>
       println("Start iteration" + s"$it")
       rdd = nnd.localJoin(rdd)
-      rdd.collect()
+      val afterItGraph = rdd.collect()
+      val avgDistAfterIt = averageDistance(afterItGraph)
+      println("average distance after iteration: " + avgDistAfterIt)
     }
     val resultingGraph = rdd.collect()
     val after = System.currentTimeMillis()
