@@ -68,12 +68,11 @@ class MapReduceNNDescent {
       (node, neighbors)
     }.toList
     println("Finished building graph")
-    printGraphStats(graph.toArray)
 
     val rdd = spark.sparkContext.parallelize(graph)
 
     val before = System.currentTimeMillis()
-    val resultingGraph = recursiveIterations(rdd, nnd, 10).collect()
+    val resultingGraph = recursiveIterations(rdd, nnd, iterations).collect()
     val after = System.currentTimeMillis()
 
     val duration = (after - before)/1000
@@ -88,7 +87,7 @@ class MapReduceNNDescent {
       rdd
     } else {
       printGraphStats(rdd.collect())
-      recursiveIterations(nnd.localJoin(rdd), nnd, maxIeration - 1)
+      recursiveIterations(nnd.newLocalJoin(rdd), nnd, maxIeration - 1)
     }
   }
 
@@ -96,7 +95,7 @@ class MapReduceNNDescent {
     val avgDist = averageDistance(graph)
     println("average distance in graph: " + avgDist)
     val avgDeg = graph.map(node => node._2.length).sum / graph.length
-    println("average degree of graph = {}", avgDeg)
+    println("average degree of graph " + avgDeg)
   }
 
   // Create initial graph
@@ -147,7 +146,6 @@ class MapReduceNNDescent {
 }
 
 class NNDescent(k: Int) extends java.io.Serializable {
-
   def localJoin(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
     graph.flatMap { case (node, neighbors) =>
       val reverseNeighbors = neighbors.map(neighbor => (neighbor.node, Seq(Neighbor(node, neighbor.distance, neighbor.isNew, isReverse = true))))
@@ -159,7 +157,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
     .flatMap { case (node, neighbors) =>
       // join neighbors
       val potentialNeighbors = neighbors.combinations(2)
-        .filter(combination => combination(0).isNew && combination(1).isNew)
+        .filter(combination => combination(0).isNew || combination(1).isNew)
         .flatMap { pair =>
           val dist = euclideanDist(pair(0).node.location, pair(1).node.location)
           val edge1 = (pair(0).node, Seq(Neighbor(pair(1).node, dist, isNew = true, isReverse = false)))
@@ -172,7 +170,54 @@ class NNDescent(k: Int) extends java.io.Serializable {
       potentialNeighbors :+ (node, currentNeighbors)
     }
     .reduceByKey { (collectedNeighbors, potentialNeighbors) =>
-        mergeSortedNeighbors(collectedNeighbors, potentialNeighbors)
+        updateNeighbors(collectedNeighbors, potentialNeighbors)
+    }
+  }
+
+  def newLocalJoin(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
+    val revNeighbors = collectReverseNeighbors(graph)
+    val potentialNeighbors = generatePotentialNeighbors(revNeighbors)
+    val newGraph = chooseNewNeighbors(potentialNeighbors)
+    newGraph
+  }
+
+  def collectReverseNeighbors(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
+    graph.flatMap { case (node, neighbors) =>
+      val reverseNeighbors = neighbors.map(neighbor => (neighbor.node, Seq(Neighbor(node, neighbor.distance, neighbor.isNew, isReverse = true))))
+      val normalNeighbors = (node, neighbors)
+      // collect normal and reverse neighbors for each node
+      reverseNeighbors :+ normalNeighbors
+    }
+      .reduceByKey(_ ++ _ distinct)
+  }
+
+  def generatePotentialNeighbors(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
+    graph.flatMap { case (node, neighbors) =>
+      // join neighbors
+      val potentialNeighbors = neighbors.combinations(2)
+        .filter(combination => combination(0).isNew || combination(1).isNew)
+        .flatMap { pair =>
+          val dist = euclideanDist(pair(0).node.location, pair(1).node.location)
+          val edge1 = (pair(0).node, Seq(Neighbor(pair(1).node, dist, isNew = true, isReverse = false)))
+          val edge2 = (pair(1).node, Seq(Neighbor(pair(0).node, dist, isNew = true, isReverse = false)))
+          Seq(edge1, edge2)
+        }.toList
+
+      val currentNeighbors = neighbors.filterNot(_.isReverse).sortBy(_.distance)
+      currentNeighbors.foreach(_.isNew = false)
+      potentialNeighbors :+ (node, currentNeighbors)
+    }.reduceByKey(_ ++ _ distinct)
+  }
+
+  def chooseNewNeighbors(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
+    graph.map { case (node, potentialNeighbors) =>
+      var alreadyChosenNeighbors: Set[Int] = Set.empty
+      val newNeighbors = potentialNeighbors.sortBy(_.distance).collect {
+        case neighbor if !alreadyChosenNeighbors.contains(neighbor.node.index) && alreadyChosenNeighbors.size < k =>
+          alreadyChosenNeighbors += neighbor.node.index
+          neighbor
+      }
+      (node, newNeighbors)
     }
   }
 
@@ -184,39 +229,24 @@ class NNDescent(k: Int) extends java.io.Serializable {
     sqrt(sum)
   }
 
-  def mergeSortedNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
-    if (potentialNeighbors.length > 1) {
-      // these are the old neighbors
-      // remove any neighbors further than the furthest old neighbor or that are already neighbors
-      val neighborToBeat = potentialNeighbors.last
-      (neighbors
-        .filterNot { newNeighbor =>
-          newNeighbor.distance < neighborToBeat.distance ||
-            potentialNeighbors.exists(neighbor => neighbor.node.index == newNeighbor.node.index)
-        } ++ potentialNeighbors).sortBy(_.distance)
-        .slice(0, k)
-    } else {
-      // this is one potential new neighbor
-      val potentialNeighbor = potentialNeighbors.head
-      if (neighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)) {
-        // already a neighbor, so ignore
-        neighbors
-      } else {
-        val neighborToBeat = neighbors.last
-        val closeEnough = potentialNeighbor.distance < neighborToBeat.distance
-        // only add new neighbors that are closer than the old furthest neighbor (if that is known)
-        if (neighbors.length < k && neighborToBeat.isNew && !closeEnough) {
-          // just add the new neighbor to the end
-          neighbors :+ potentialNeighbor
-        } else if (closeEnough) {
-          // add neighbor in the correct position
-          val position = neighbors.indexWhere(_.distance > potentialNeighbor.distance)
-          neighbors.patch(position, potentialNeighbors, 0)
-        } else {
-          // don't use this potential neighbor
-          neighbors
+  def updateNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
+    var updatedNeighbors = neighbors
+    potentialNeighbors.foreach { potentialNeighbor =>
+      if (!updatedNeighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)) {
+        val position = updatedNeighbors.indexWhere(_.distance > potentialNeighbor.distance)
+        if (position < 0) {
+          updatedNeighbors = (updatedNeighbors :+ potentialNeighbor).slice(0, k)
         }
+        else {
+          updatedNeighbors = updatedNeighbors.patch(position, potentialNeighbors, 0).slice(0, k)
+        }
+      } else {
+        val n = updatedNeighbors.find(neighbor => neighbor.node.index == potentialNeighbor.node.index).get
+        n.isNew = n.isNew && potentialNeighbor.isNew
+        assert(n.distance == potentialNeighbor.distance)
       }
     }
+    updatedNeighbors
   }
+
 }
