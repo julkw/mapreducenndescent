@@ -21,7 +21,6 @@ object MapReduceNNDescent {
   def main(args: Array[String]): Unit = {
     mapReduceApp.run()
   }
-
 }
 
 class MapReduceNNDescent {
@@ -29,7 +28,7 @@ class MapReduceNNDescent {
   val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
   // val numCores: Int = 20
   // val numPartitions: Int = 240
-  val k = 30
+  val k = 50
   val initialNeighbors = 10
   val iterations = 5
 
@@ -43,7 +42,7 @@ class MapReduceNNDescent {
     val sparkBuilder = SparkSession
       .builder()
       .appName("MapReduce NNDescent")
-      .master("local[4]")
+      //.master("local[4]")
       //.config("spark.driver.bindAddress", "127.0.0.1")
     val spark = sparkBuilder.getOrCreate()
 
@@ -53,7 +52,7 @@ class MapReduceNNDescent {
     // spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
 
     // read data and generate random graph
-    val data = readDataFloat(path).slice(0, 500)
+    val data = readDataFloat(path)//.slice(0, 1000)
     val nnd = new NNDescent(k)
 
     println("Read " + s"${data.length}" + " lines of data from " + s"$path")
@@ -200,12 +199,13 @@ class NNDescent(k: Int) extends java.io.Serializable {
 
   def mergeNeighborLists(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
     var alreadyChosenNeighbors: Set[Int] = Set.empty
-    val newNeighbors = (neighbors ++ potentialNeighbors).sortBy(n => (n.distance, n.isNew)).collect {
-      case neighbor if !alreadyChosenNeighbors.contains(neighbor.node.index) && alreadyChosenNeighbors.size < k =>
-        alreadyChosenNeighbors += neighbor.node.index
-        neighbor
-    }
-    newNeighbors
+    (neighbors ++ potentialNeighbors)
+      .sortBy(n => (n.distance, n.isNew))
+      .collect {
+        case neighbor if !alreadyChosenNeighbors.contains(neighbor.node.index) && alreadyChosenNeighbors.size < k =>
+          alreadyChosenNeighbors += neighbor.node.index
+          neighbor
+      }
   }
 
   // used in debugging
