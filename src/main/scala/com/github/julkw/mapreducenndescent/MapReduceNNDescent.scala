@@ -46,7 +46,7 @@ class MapReduceNNDescent {
     val sparkBuilder = SparkSession
       .builder()
       .appName("MapReduce NNDescent")
-      //.master("local[4]")
+      .master("local[4]")
       //.config("spark.driver.bindAddress", "127.0.0.1")
     val spark = sparkBuilder.getOrCreate()
 
@@ -56,7 +56,7 @@ class MapReduceNNDescent {
     // spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
 
     // read data and generate random graph
-    val data = readDataFloat(path)//.slice(0, 1000)
+    val data = readDataFloat(path).slice(0, 1000)
     val nnd = new NNDescent(k)
 
     println("Read " + s"${data.length}" + " lines of data from " + s"$path")
@@ -68,8 +68,7 @@ class MapReduceNNDescent {
       (node, neighbors)
     }.toList
     println("Finished building graph")
-    val avgDistBefore = averageDistance(graph.toArray)
-    println("average distance before NNDescent: " + avgDistBefore)
+    printGraphStats(graph.toArray)
 
     val rdd = spark.sparkContext.parallelize(graph)
 
@@ -79,23 +78,25 @@ class MapReduceNNDescent {
 
     val duration = (after - before)/1000
     println(s"$iterations" + " iterations took " + s"$duration" + " seconds")
-    val avgDistAfter = averageDistance(resultingGraph)
-    println("average distance after: " + avgDistAfter)
+    printGraphStats(resultingGraph)
   }
 
   def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIeration: Int): RDD[(Node, Seq[Neighbor])] = {
     println("iteration")
     if (maxIeration == 0) {
-      //val afterItGraph = rdd.collect()
-      //val avgDistAfterIt = averageDistance(afterItGraph)
-      //println("average distance after all iterations: " + avgDistAfterIt)
+      printGraphStats(rdd.collect())
       rdd
     } else {
-      //val afterItGraph = rdd.collect()
-     // val avgDistAfterIt = averageDistance(afterItGraph)
-      //println("average distance before iteration: " + avgDistAfterIt)
+      printGraphStats(rdd.collect())
       recursiveIterations(nnd.localJoin(rdd), nnd, maxIeration - 1)
     }
+  }
+
+  def printGraphStats(graph: Array[(Node, Seq[Neighbor])]): Unit = {
+    val avgDist = averageDistance(graph)
+    println("average distance in graph: " + avgDist)
+    val avgDeg = graph.map(node => node._2.length).sum / graph.length
+    println("average degree of graph = {}", avgDeg)
   }
 
   // Create initial graph
@@ -157,14 +158,16 @@ class NNDescent(k: Int) extends java.io.Serializable {
     .reduceByKey(_ ++ _ distinct)
     .flatMap { case (node, neighbors) =>
       // join neighbors
-      val potentialNeighbors = neighbors.combinations(2).filter(combination => combination(0).isNew && combination(1).isNew).flatMap { pair =>
-        val dist = euclideanDist(pair(0).node.location, pair(1).node.location)
-        val edge1 = (pair(0).node, Seq(Neighbor(pair(1).node, dist, isNew = true, isReverse = false)))
-        val edge2 = (pair(1).node, Seq(Neighbor(pair(0).node, dist, isNew = true, isReverse = false)))
-        Seq(edge1, edge2)
-      }.toList
+      val potentialNeighbors = neighbors.combinations(2)
+        .filter(combination => combination(0).isNew && combination(1).isNew)
+        .flatMap { pair =>
+          val dist = euclideanDist(pair(0).node.location, pair(1).node.location)
+          val edge1 = (pair(0).node, Seq(Neighbor(pair(1).node, dist, isNew = true, isReverse = false)))
+          val edge2 = (pair(1).node, Seq(Neighbor(pair(0).node, dist, isNew = true, isReverse = false)))
+          Seq(edge1, edge2)
+        }.toList
 
-      val currentNeighbors = neighbors.filter(!_.isReverse).sortBy(_.distance)
+      val currentNeighbors = neighbors.filterNot(_.isReverse).sortBy(_.distance)
       currentNeighbors.foreach(_.isNew = false)
       potentialNeighbors :+ (node, currentNeighbors)
     }
@@ -182,25 +185,38 @@ class NNDescent(k: Int) extends java.io.Serializable {
   }
 
   def mergeSortedNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
-    var finalNeighbors = neighbors
-    potentialNeighbors.distinct.foreach { potentialNeighbor =>
-      // explicitly check using index to avoid duplications where the same neighbor is both old and new
-      val alreadyANeighbor = neighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)
-      // always add neighbors if neighbors < k, since we don't know in which order they are reduced (problematic if one of the closest is one of the first)
-      if (!alreadyANeighbor && (finalNeighbors.length < k || neighbors.last.distance > potentialNeighbor.distance)) {
-        finalNeighbors = insertIntoSortedNeighbors(finalNeighbors, potentialNeighbor)
-      }
-    }
-    finalNeighbors
-  }
-
-    // TODO the worsening of average distances after an iteration sadly still happens, also it became a lot slower with this for some reason
-  def insertIntoSortedNeighbors(sortedNeighbors: Seq[Neighbor], newNeighbor: Neighbor): Seq[Neighbor] = {
-    val position = sortedNeighbors.indexWhere(_.distance > newNeighbor.distance)
-    if (position < 0) {
-      sortedNeighbors :+ newNeighbor
+    if (potentialNeighbors.length > 1) {
+      // these are the old neighbors
+      // remove any neighbors further than the furthest old neighbor or that are already neighbors
+      val neighborToBeat = potentialNeighbors.last
+      (neighbors
+        .filterNot { newNeighbor =>
+          newNeighbor.distance < neighborToBeat.distance ||
+            potentialNeighbors.exists(neighbor => neighbor.node.index == newNeighbor.node.index)
+        } ++ potentialNeighbors).sortBy(_.distance)
+        .slice(0, k)
     } else {
-      (sortedNeighbors.slice(0, position) :+ newNeighbor) ++ sortedNeighbors.slice(position, k - 1)
+      // this is one potential new neighbor
+      val potentialNeighbor = potentialNeighbors.head
+      if (neighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)) {
+        // already a neighbor, so ignore
+        neighbors
+      } else {
+        val neighborToBeat = neighbors.last
+        val closeEnough = potentialNeighbor.distance < neighborToBeat.distance
+        // only add new neighbors that are closer than the old furthest neighbor (if that is known)
+        if (neighbors.length < k && neighborToBeat.isNew && !closeEnough) {
+          // just add the new neighbor to the end
+          neighbors :+ potentialNeighbor
+        } else if (closeEnough) {
+          // add neighbor in the correct position
+          val position = neighbors.indexWhere(_.distance > potentialNeighbor.distance)
+          neighbors.patch(position, potentialNeighbors, 0)
+        } else {
+          // don't use this potential neighbor
+          neighbors
+        }
+      }
     }
   }
 }
