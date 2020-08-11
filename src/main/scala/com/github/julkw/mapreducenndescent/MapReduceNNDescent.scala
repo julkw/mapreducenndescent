@@ -87,7 +87,7 @@ class MapReduceNNDescent {
       rdd
     } else {
       printGraphStats(rdd.collect())
-      recursiveIterations(nnd.newLocalJoin(rdd), nnd, maxIeration - 1)
+      recursiveIterations(nnd.localJoin(rdd), nnd, maxIeration - 1)
     }
   }
 
@@ -170,7 +170,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
       potentialNeighbors :+ (node, currentNeighbors)
     }
     .reduceByKey { (collectedNeighbors, potentialNeighbors) =>
-        updateNeighbors(collectedNeighbors, potentialNeighbors)
+        reduceNewNeighbors(collectedNeighbors, potentialNeighbors)
     }
   }
 
