@@ -170,7 +170,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
       potentialNeighbors :+ (node, currentNeighbors)
     }
     .reduceByKey { (collectedNeighbors, potentialNeighbors) =>
-        reduceNewNeighbors(collectedNeighbors, potentialNeighbors)
+        updateNeighbors(collectedNeighbors, potentialNeighbors)
     }
   }
 
@@ -253,7 +253,6 @@ class NNDescent(k: Int) extends java.io.Serializable {
       } else {
         val n = updatedNeighbors.find(neighbor => neighbor.node.index == potentialNeighbor.node.index).get
         n.isNew = n.isNew && potentialNeighbor.isNew
-        assert(n.distance == potentialNeighbor.distance)
       }
     }
     updatedNeighbors
