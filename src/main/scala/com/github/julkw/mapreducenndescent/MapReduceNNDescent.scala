@@ -30,7 +30,7 @@ class MapReduceNNDescent {
   // val numPartitions: Int = 240
   val k = 50
   val initialNeighbors = 10
-  val iterations = 5
+  val iterations = 10
 
   def run(): Unit = {
 
@@ -64,16 +64,28 @@ class MapReduceNNDescent {
       (node, neighbors)
     }.toList
     println("Finished building graph")
+    printGraphStats(graph.toArray)
 
-    val rdd = spark.sparkContext.parallelize(graph)
+    var rdd = spark.sparkContext.parallelize(graph)
 
-    val before = System.currentTimeMillis()
-    val resultingGraph = recursiveIterations(rdd, nnd, iterations).collect()
-    val after = System.currentTimeMillis()
-
-    val duration = (after - before)/1000
-    println(s"$iterations" + " iterations took " + s"$duration" + " seconds")
-    printGraphStats(resultingGraph)
+    var combinedIterationTime: Long = 0
+    (0 until iterations).foreach { it =>
+      val beforeIt = System.currentTimeMillis()
+      rdd = nnd.localJoin(rdd)
+      val updatedGraph = rdd.collect()
+      val afterIt = System.currentTimeMillis()
+      printGraphStats(updatedGraph)
+      val itDuration = (afterIt - beforeIt)/1000
+      if (updatedGraph.exists(node => node._2.exists(neighbor => neighbor.isNew))) {
+        combinedIterationTime += itDuration
+        println("Something changed in iteration " + s"$it"+ ", which took " + s"$itDuration" + " seconds")
+      } else {
+        println("Nothing changed in the last iteration, stopping NNDescent")
+        println("All " + s"$it" + " iterations together took " + s"${combinedIterationTime}" + " seconds")
+        return
+      }
+    }
+    println("All " + s"$iterations" + " iterations together took " + s"${combinedIterationTime}" + " seconds")
   }
 
   def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIteration: Int): RDD[(Node, Seq[Neighbor])] = {
