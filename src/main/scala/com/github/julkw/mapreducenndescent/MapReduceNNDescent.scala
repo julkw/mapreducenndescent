@@ -46,7 +46,7 @@ class MapReduceNNDescent {
     val sparkBuilder = SparkSession
       .builder()
       .appName("MapReduce NNDescent")
-      .master("local[4]")
+      //.master("local[4]")
       //.config("spark.driver.bindAddress", "127.0.0.1")
     val spark = sparkBuilder.getOrCreate()
 
@@ -56,7 +56,7 @@ class MapReduceNNDescent {
     // spark.conf.set("spark.sql.shuffle.partitions", s"$numPartitions")
 
     // read data and generate random graph
-    val data = readDataFloat(path).slice(0, 1000)
+    val data = readDataFloat(path)//.slice(0, 1000)
     val nnd = new NNDescent(k)
 
     println("Read " + s"${data.length}" + " lines of data from " + s"$path")
