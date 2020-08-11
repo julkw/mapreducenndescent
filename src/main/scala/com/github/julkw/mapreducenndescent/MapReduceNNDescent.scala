@@ -31,10 +31,7 @@ class MapReduceNNDescent {
   // val numPartitions: Int = 240
   val k = 50
   val initialNeighbors = 10
-  val iterations = 10
-
-  // TODO sometimes the average distance increases after an iteration
-  // TODO count changes to neighbors and only do more iterations if there were any?
+  val iterations = 5
 
   def run(): Unit = {
 
@@ -174,7 +171,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
     }
   }
 
-  def newLocalJoin(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
+  def verySlowLocalJoin(graph: RDD[(Node, Seq[Neighbor])]): RDD[(Node, Seq[Neighbor])] = {
     val revNeighbors = collectReverseNeighbors(graph)
     val potentialNeighbors = generatePotentialNeighbors(revNeighbors)
     val newGraph = chooseNewNeighbors(potentialNeighbors)
@@ -222,6 +219,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
   }
 
   def reduceNewNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
+    //assert(isSorted(neighbors))
     var alreadyChosenNeighbors: Set[Int] = Set.empty
     val newNeighbors = (neighbors ++ potentialNeighbors).sortBy(n => (n.distance, n.isNew)).collect {
       case neighbor if !alreadyChosenNeighbors.contains(neighbor.node.index) && alreadyChosenNeighbors.size < k =>
@@ -256,6 +254,12 @@ class NNDescent(k: Int) extends java.io.Serializable {
       }
     }
     updatedNeighbors
+  }
+
+  def isSorted(n: Seq[Neighbor]): Boolean = n match {
+    case Seq() => true
+    case Seq(_) => true
+    case _ => n.sliding(2).forall { case Seq(x, y) => x.distance <= y.distance }
   }
 
 }
