@@ -223,7 +223,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
 
   def reduceNewNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
     var alreadyChosenNeighbors: Set[Int] = Set.empty
-    val newNeighbors = (neighbors ++ potentialNeighbors).sortBy(_.distance).collect {
+    val newNeighbors = (neighbors ++ potentialNeighbors).sortBy(n => (n.distance, n.isNew)).collect {
       case neighbor if !alreadyChosenNeighbors.contains(neighbor.node.index) && alreadyChosenNeighbors.size < k =>
         alreadyChosenNeighbors += neighbor.node.index
         neighbor
