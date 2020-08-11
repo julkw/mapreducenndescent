@@ -170,7 +170,7 @@ class NNDescent(k: Int) extends java.io.Serializable {
       potentialNeighbors :+ (node, currentNeighbors)
     }
     .reduceByKey { (collectedNeighbors, potentialNeighbors) =>
-        updateNeighbors(collectedNeighbors, potentialNeighbors)
+        reduceNewNeighbors(collectedNeighbors, potentialNeighbors)
     }
   }
 
@@ -219,6 +219,16 @@ class NNDescent(k: Int) extends java.io.Serializable {
       }
       (node, newNeighbors)
     }
+  }
+
+  def reduceNewNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
+    var alreadyChosenNeighbors: Set[Int] = Set.empty
+    val newNeighbors = (neighbors ++ potentialNeighbors).sortBy(_.distance).collect {
+      case neighbor if !alreadyChosenNeighbors.contains(neighbor.node.index) && alreadyChosenNeighbors.size < k =>
+        alreadyChosenNeighbors += neighbor.node.index
+        neighbor
+    }
+    newNeighbors
   }
 
   def euclideanDist(pointX: Seq[Float], pointY: Seq[Float]): Double = {
