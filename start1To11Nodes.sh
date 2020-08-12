@@ -18,7 +18,6 @@ for n in {11..1}; do
   --master spark://odin01:7077 \
   --class "com.github.julkw.mapreducenndescent.MapReduceNNDescent" \
   --driver-memory "${memory}" \
-  --driver-maxResultSize "${memory}" \
   --executor-memory "${memory}" \
   --num-executors "${n}" \
   --executor-cores "${e_cores}" \

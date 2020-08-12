@@ -53,8 +53,14 @@ class MapReduceNNDescent {
 
     // read data and generate random graph
     val data = readDataFloat(path)//.slice(0, 1000)
+    for (k <- Seq(10, 25, 50, 100)) {
+      runMapReduce(spark, k, data)
+    }
+  }
 
-    val nnd = new NNDescent(initialNeighbors)
+  def runMapReduce(spark: SparkSession, k: Int, data: Array[Array[Float]]): Unit = {
+    val nnd = new NNDescent(k)
+
     println("Read " + s"${data.length}" + " lines of data from " + s"$path")
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
@@ -64,13 +70,7 @@ class MapReduceNNDescent {
       (node, neighbors)
     }.toList
     println("Finished building graph")
-    for (k <- Seq(10, 25, 50, 100)) {
-      runMapReduce(spark, k, graph)
-    }
-  }
 
-  def runMapReduce(spark: SparkSession, k: Int, graph: List[(Node, Seq[Neighbor])]): Unit = {
-    val nnd = new NNDescent(k)
     printGraphStats(graph.toArray)
     var rdd = spark.sparkContext.parallelize(graph)
     var combinedIterationTime: Long = 0
