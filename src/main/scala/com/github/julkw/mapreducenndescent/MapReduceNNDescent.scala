@@ -28,7 +28,7 @@ class MapReduceNNDescent {
   val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
   // val numCores: Int = 20
   // val numPartitions: Int = 240
-  val k = 50
+  val k = 100
   val initialNeighbors = 10
   val iterations = 10
 
