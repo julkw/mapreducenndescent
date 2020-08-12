@@ -53,6 +53,7 @@ class MapReduceNNDescent {
 
     // read data and generate random graph
     val data = readDataFloat(path)//.slice(0, 1000)
+    println("Read " + s"${data.length}" + " lines of data from " + s"$path")
     for (k <- Seq(10, 25, 50, 100)) {
       runMapReduce(spark, k, data)
     }
@@ -61,7 +62,8 @@ class MapReduceNNDescent {
   def runMapReduce(spark: SparkSession, k: Int, data: Array[Array[Float]]): Unit = {
     val nnd = new NNDescent(k)
 
-    println("Read " + s"${data.length}" + " lines of data from " + s"$path")
+    println("Run NNDescent with k: " + s"$k")
+
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
       val neighbors = randomNodes(initialNeighbors, data.length).toSeq.map { neighborIndex =>
@@ -91,6 +93,8 @@ class MapReduceNNDescent {
       }
     }
     println("All " + s"$iterations" + " iterations together took " + s"$combinedIterationTime" + " seconds")
+    println(" ")
+    println(" ")
   }
 
   def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIteration: Int): RDD[(Node, Seq[Neighbor])] = {
