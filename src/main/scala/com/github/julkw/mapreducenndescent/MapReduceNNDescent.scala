@@ -28,7 +28,7 @@ class MapReduceNNDescent {
   val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
   // val numCores: Int = 20
   // val numPartitions: Int = 240
-  val k = 100
+  // val k = 100
   val initialNeighbors = 10
   val iterations = 10
 
@@ -53,8 +53,8 @@ class MapReduceNNDescent {
 
     // read data and generate random graph
     val data = readDataFloat(path)//.slice(0, 1000)
-    val nnd = new NNDescent(k)
 
+    val nnd = new NNDescent(initialNeighbors)
     println("Read " + s"${data.length}" + " lines of data from " + s"$path")
     val graph = data.indices.map { nodeIndex =>
       val node = Node(nodeIndex, data(nodeIndex).toSeq)
@@ -64,10 +64,15 @@ class MapReduceNNDescent {
       (node, neighbors)
     }.toList
     println("Finished building graph")
+    for (k <- Seq(10, 25, 50, 100)) {
+      runMapReduce(spark, k, graph)
+    }
+  }
+
+  def runMapReduce(spark: SparkSession, k: Int, graph: List[(Node, Seq[Neighbor])]): Unit = {
+    val nnd = new NNDescent(k)
     printGraphStats(graph.toArray)
-
     var rdd = spark.sparkContext.parallelize(graph)
-
     var combinedIterationTime: Long = 0
     (0 until iterations).foreach { it =>
       val beforeIt = System.currentTimeMillis()
@@ -81,11 +86,11 @@ class MapReduceNNDescent {
         println("Something changed in iteration " + s"$it"+ ", which took " + s"$itDuration" + " seconds")
       } else {
         println("Nothing changed in the last iteration, stopping NNDescent")
-        println("All " + s"$it" + " iterations together took " + s"${combinedIterationTime}" + " seconds")
+        println("All " + s"$it" + " iterations together took " + s"$combinedIterationTime" + " seconds")
         return
       }
     }
-    println("All " + s"$iterations" + " iterations together took " + s"${combinedIterationTime}" + " seconds")
+    println("All " + s"$iterations" + " iterations together took " + s"$combinedIterationTime" + " seconds")
   }
 
   def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIteration: Int): RDD[(Node, Seq[Neighbor])] = {
