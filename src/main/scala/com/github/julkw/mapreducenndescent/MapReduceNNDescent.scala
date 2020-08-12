@@ -44,6 +44,7 @@ class MapReduceNNDescent {
       .appName("MapReduce NNDescent")
       //.master("local[4]")
       //.config("spark.driver.bindAddress", "127.0.0.1")
+      .config("spark.driver.maxResultSize", "20g")
     val spark = sparkBuilder.getOrCreate()
 
     spark.sparkContext.setLogLevel("OFF")
@@ -88,13 +89,11 @@ class MapReduceNNDescent {
         println("Something changed in iteration " + s"$it"+ ", which took " + s"$itDuration" + " seconds")
       } else {
         println("Nothing changed in the last iteration, stopping NNDescent")
-        println("All " + s"$it" + " iterations together took " + s"$combinedIterationTime" + " seconds")
+        println("All " + s"$it" + " iterations together took " + s"$combinedIterationTime" + " seconds\n\n\n")
         return
       }
     }
-    println("All " + s"$iterations" + " iterations together took " + s"$combinedIterationTime" + " seconds")
-    println(" ")
-    println(" ")
+    println("All " + s"$iterations" + " iterations together took " + s"$combinedIterationTime" + " seconds\n\n\n")
   }
 
   def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIteration: Int): RDD[(Node, Seq[Neighbor])] = {
