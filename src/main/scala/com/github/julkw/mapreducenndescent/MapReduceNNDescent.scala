@@ -79,6 +79,7 @@ class MapReduceNNDescent {
     var combinedIterationTime: Long = 0
     (0 until iterations).foreach { it =>
       val beforeIt = System.currentTimeMillis()
+      println("Start next iteration at: " + s"$beforeIt")
       rdd = nnd.localJoin(rdd)
       val updatedGraph = rdd.collect()
       val afterIt = System.currentTimeMillis()
@@ -198,18 +199,24 @@ class NNDescent(k: Int) extends java.io.Serializable {
     sqrt(sum)
   }
 
+  // TODO: change neighbors to largest is in front for faster closeEnough check?
   def reducePotentialNeighbors(neighbors: Seq[Neighbor], potentialNeighbors: Seq[Neighbor]): Seq[Neighbor] = {
     if (potentialNeighbors.length > 1) {
       mergeNeighborLists(neighbors, potentialNeighbors)
     } else {
       val potentialNeighbor = potentialNeighbors.head
-      val alreadyExists = neighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)
-      if (!alreadyExists) {
-        val position = neighbors.indexWhere(_.distance > potentialNeighbor.distance)
-        if (position < 0) {
-          (neighbors :+ potentialNeighbor).slice(0, k)
+      val closeEnough = neighbors.length < k || neighbors.last.distance > potentialNeighbor.distance
+      if (closeEnough) {
+        val alreadyExists = neighbors.exists(neighbor => neighbor.node.index == potentialNeighbor.node.index)
+        if (!alreadyExists) {
+          val position = neighbors.indexWhere(_.distance > potentialNeighbor.distance)
+          if (position < 0) {
+            (neighbors :+ potentialNeighbor).slice(0, k)
+          } else {
+            neighbors.patch(position, potentialNeighbors, 0).slice(0, k)
+          }
         } else {
-          neighbors.patch(position, potentialNeighbors, 0).slice(0, k)
+          neighbors
         }
       } else {
         neighbors
