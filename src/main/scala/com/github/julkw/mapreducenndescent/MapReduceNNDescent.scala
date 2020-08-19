@@ -25,7 +25,7 @@ object MapReduceNNDescent {
 
 class MapReduceNNDescent {
 
-  val path: String = "../dNSG/data/siftsmall/siftsmall_base.fvecs"
+  val path: String = "../dNSG/data/sift100k/sift100k_base.fvecs"
   // val numCores: Int = 20
   // val numPartitions: Int = 240
   // val k = 100
@@ -79,11 +79,10 @@ class MapReduceNNDescent {
     var combinedIterationTime: Long = 0
     (0 until iterations).foreach { it =>
       val beforeIt = System.currentTimeMillis()
-      println("Start next iteration at: " + s"$beforeIt")
       rdd = nnd.localJoin(rdd)
       val updatedGraph = rdd.collect()
       val afterIt = System.currentTimeMillis()
-      printGraphStats(updatedGraph)
+      // printGraphStats(updatedGraph)
       val itDuration = (afterIt - beforeIt)/1000
       if (updatedGraph.exists(node => node._2.exists(neighbor => neighbor.isNew))) {
         combinedIterationTime += itDuration
@@ -95,17 +94,6 @@ class MapReduceNNDescent {
       }
     }
     println("All " + s"$iterations" + " iterations together took " + s"$combinedIterationTime" + " seconds\n\n\n")
-  }
-
-  def recursiveIterations(rdd: RDD[(Node, Seq[Neighbor])], nnd: NNDescent, maxIteration: Int): RDD[(Node, Seq[Neighbor])] = {
-    println("iteration")
-    if (maxIteration == 0) {
-      printGraphStats(rdd.collect())
-      rdd
-    } else {
-      printGraphStats(rdd.collect())
-      recursiveIterations(nnd.localJoin(rdd), nnd, maxIteration - 1)
-    }
   }
 
   def printGraphStats(graph: Array[(Node, Seq[Neighbor])]): Unit = {
