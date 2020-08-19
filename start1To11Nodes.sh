@@ -15,14 +15,15 @@ for n in {11..1}; do
 	  e_cores=20
 	  total_e_cores=$(( n * e_cores ))
 
-	  /opt/spark/2.4.4/bin/spark-submit \
-	  --master spark://odin01:7077 \
-	  --class "com.github.julkw.mapreducenndescent.MapReduceNNDescent" \
-	  --driver-memory "${memory}" \
-	  --executor-memory "${memory}" \
-	  --num-executors "${n}" \
-	  --executor-cores "${e_cores}" \
-	  --total-executor-cores "${total_e_cores}" \
-	  target/scala-2.11/MapReduceNNDescent-assembly-0.1.jar 
+	  timeout --signal=15 12h \
+		  /opt/spark/2.4.4/bin/spark-submit \
+		  --master spark://odin01:7077 \
+		  --class "com.github.julkw.mapreducenndescent.MapReduceNNDescent" \
+		  --driver-memory "${memory}" \
+		  --executor-memory "${memory}" \
+		  --num-executors "${n}" \
+		  --executor-cores "${e_cores}" \
+		  --total-executor-cores "${total_e_cores}" \
+		  target/scala-2.11/MapReduceNNDescent-assembly-0.1.jar 
 	done
 done | tee $LOG
